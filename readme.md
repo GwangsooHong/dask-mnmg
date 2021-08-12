@@ -1,6 +1,6 @@
-# Run Rapids Dask with multi-gpus on multi-nodes
+# Rapids Dask CuML Clustering algorithm with multi-gpus on multi-nodes
 
-This implementation works based on [NGC(NVIDIA GPU Cloud)](https://ngc.nvidia.com/catalog/collections) RAPIDS container(rapidsai:21.08-cuda11.2-runtime-ubuntu18.04). `dask_main.py` is a main script file to run Dask on single or multi-nodes. It contains several arguments worth noting:
+This implementation works based on [NGC(NVIDIA GPU Cloud)](https://ngc.nvidia.com/catalog/collections) RAPIDS container(rapidsai:21.08-cuda11.2-runtime-ubuntu18.04). `dask_main.py` is a main script file to run Dask on single or multi-nodes for RAPIDS cuml clustering algorithms.
 
 
 ## 1. Download CRITEO dataset
