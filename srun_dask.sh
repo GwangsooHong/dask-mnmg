@@ -18,7 +18,7 @@ then
 fi
 
 #Annex-B
-#srun -N 2 -G 16 -p batch --exclude=dgx1-[000-007] --gpus-per-node=8 --job-name=sa-computing-test --exclusive --overcommit --mpi=pmix --container-image=${CONTAINER_IMAGE} --container-mounts ${PWD}:${WORKSPACE} bash -c "${WORKSPACE}/dask_multinode.sh"
+#srun -N 4 -G 32 -p batch --gpus-per-node=8 --job-name=sa-computing-test --exclusive --overcommit --mpi=pmix --container-image=${CONTAINER_IMAGE} --container-mounts ${PWD}:${WORKSPACE} bash -c "${WORKSPACE}/dask_multinode.sh"
 
 #Prometheus
-srun -N 5 -p batch --job-name=computing-test --exclude=prm-dgx-31 --export ALL,OMPI_MCA_btl="^openib",OMPI_MCA_pml="ucx" --overcommit --container-image=${CONTAINER_IMAGE} --container-mounts ${PWD}:${WORKSPACE} bash -c "${WORKSPACE}/dask_multinode.sh"
+srun -N 5 -p batch --job-name=computing-test --export ALL,OMPI_MCA_btl="^openib",OMPI_MCA_pml="ucx" --overcommit --container-image=${CONTAINER_IMAGE} --container-mounts ${PWD}:${WORKSPACE} bash -c "${WORKSPACE}/dask_multinode.sh"

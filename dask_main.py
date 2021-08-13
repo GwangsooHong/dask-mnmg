@@ -22,7 +22,7 @@ parser.add_argument("--decompress-criteo", default=False, help="Decompress gz fo
 parser.add_argument("--parquet-prepared", default=True, help="Set True if you have already finished CRITEO parquet format conversion")
 parser.add_argument("--base-dir", default=os.getcwd(), help="base workspace")
 parser.add_argument("--gpus-per-node", default=4, help="number of gpus per node required to Dask Local Cluster. You don't need to specify when using Slurm")
-parser.add_argument("--clustering-algorithm", default="KMeans", help="KMeans or DBSCAN is only supported")
+parser.add_argument("--clustering-algorithm", default="KMeans", help="KMeans is the only one supported on Multi-nodes")
 args = parser.parse_args()
 
 SLURM = args.slurm
@@ -245,18 +245,23 @@ def launch_dask_local_cluster(device_limit_frac, device_pool_frac, nGPUs=2, mana
     return client
 
 
-def run_kmeans(ddf, n_clusters = 8, random_state = 100):
+def run_kmeans(ddf, init="k-means||", n_clusters = 8, random_state = 100):
     '''
     Run Dask KMeans for multi-node multi-gpus
     '''
+    
+    print("- Parameters")
+    print("     - init:", init)
+    print("     - n_clusters:", n_clusters)
+    print("     - random_state:", random_state)
     start = time.time()
-    kmeans_cuml = cuKMeans(init="k-means||",
+    kmeans_cuml = cuKMeans(init=init,
                        n_clusters=n_clusters,
                        verbose=5,
                        random_state=random_state)
     kmeans_cuml.fit(ddf)
     elapsed_time = time.time() - start
-    print("KMeans elapsed time:", elapsed_time, "seconds")
+    print("- KMeans elapsed time:", elapsed_time, "seconds\n")
     return kmeans_cuml, elapsed_time
 
 
@@ -264,13 +269,17 @@ def run_dbscan(ddf, eps = 0.5, min_samples = 5):
     '''
     Run Dask DBSCAN for multi-node multi-gpus
     '''
+
+    print("- Parameters")
+    print("     - eps:", eps)
+    print("     - min_samples:", min_samples)
     start = time.time()
     dbscan_cuml = cuDBSCAN(eps = eps,
                            min_samples = min_samples,
                            verbose = 5)
     dbscan_cuml.fit(ddf)
     elapsed_time = time.time() - start
-    print("DBSCAN elapsed time:", elapsed_time, "seconds")
+    print("- DBSCAN elapsed time:", elapsed_time, "seconds\n")
     return dbscan_cuml, elapsed_time
 
 
@@ -303,19 +312,17 @@ def main():
         sys.exit(0)    
 
     print("<< Dask Cluster is successfully launched >>")
-    print("Dashboard link:", client.dashboard_link)
-    
-    print("++++++++++++++++++++++++++++++++++++++++++++++++")
-    print("Base Directory:", BASE_DIR)
-    print("Parquet Data Directory", PARQUET_DATA_PATH)
-    print("Slurm enabled:", SLURM)
+    print("- Dashboard link:", client.dashboard_link)
+    print("- Base Directory:", BASE_DIR)
+    print("- Parquet Data Directory", PARQUET_DATA_PATH)
+    print("- Slurm enabled:", SLURM)
     if SLURM:
-        print("Num Dask Workers:", int(os.getenv("SLURM_NTASKS")) - 2) 
-    print("Num GPUs per Worker:", GPUS_PER_NODE)
-    print("Total Num GPUs:", len(client.ncores()))
-    print("Clustering algorithm:",  CLUSTERING_ALGORITHM)
-    print("++++++++++++++++++++++++++++++++++++++++++++++++")
-
+        print("- Slurm job id:", int(os.getenv("SLURM_JOB_ID")))
+        print("- Num Dask Workers:", int(os.getenv("SLURM_NTASKS")) - 2) 
+    print("- Num GPUs per Worker:", GPUS_PER_NODE)
+    print("- Total Num GPUs:", len(client.ncores()))
+    print("- Clustering algorithm:",  CLUSTERING_ALGORITHM)
+    
     # Get Parquet format
     criteo_meta = get_criteo_meta()
     columns = criteo_meta["columns"]["label"] +  criteo_meta["columns"]["continuous_columns"] + criteo_meta["columns"]["categorical_columns"]
@@ -324,37 +331,51 @@ def main():
     if PARQUET_PREPARED != True:
         convert_from_csv_to_parquet(client = client, part_mem_frac = 0.1, meta = criteo_meta)
     parquet_file_list = glob.glob(os.path.join(PARQUET_DATA_PATH, "*"))
-    print("num files to be loaded:", len(parquet_file_list))
+    print("- Num files to be loaded:", len(parquet_file_list),"\n")
 
     ddf = dask_cudf.read_parquet(path = parquet_file_list,
-                                 columns = ["I1", "I2"], #columns,
+                                 columns = columns,
                                  split_row_groups=True)
     continuous_features = criteo_meta["columns"]["continuous_columns"]
-    #test_ddf = ddf[continuous_features]
-    test_ddf = ddf
-    print("Start persisting ...")
+    test_ddf = ddf[continuous_features]
+ 
+    print("<< Persisting data... >>")
     stime = time.time()    
     test_ddf = test_ddf.persist()
     
     if SLURM:
         future = client.submit(len, test_ddf)
-        print("number of rows:", future.result())
+        print("- number of rows:", future.result())
     else:
-        print("number of rows:", len(test_ddf))
-    print("number of features:", len(continuous_features))
-    print("number of dask partitions:", test_ddf.npartitions)
+        print("- number of rows:", len(test_ddf))
+    print("- number of features:", len(continuous_features))
+    print("- number of dask partitions:", test_ddf.npartitions)
+    print("- Total data size:", subprocess.check_output(['du','-sh', PARQUET_DATA_PATH]).split()[0].decode('utf-8'))
     elapsed_time_persisting = time.time() - stime
-    print("End persisting ...")
-    print("Persisting elapsed time:", elapsed_time_persisting, "seconds")
+    print("- Persisting elapsed time:", elapsed_time_persisting, "seconds\n")
     
     if CLUSTERING_ALGORITHM == "KMeans":
+        print("<< KMeans computing ... >>")
         output, elapsed_time = run_kmeans(test_ddf)
     else:
-        # dask_cudf is not supported ????  error message:  X matrix format <class 'dask_cudf.core.DataFrame'> not supported
+        # dask_cudf is not supported. DBSCAN should fit your data on single GPU memory size and replicates it to other GPUs for computing.
+        print("<< DBSCAN computing ... >>")
+        print("- Fitting data to your single GPU memory")
+        test_ddf = test_ddf.compute()        
         output, elapsed_time = run_dbscan(test_ddf)
     
     client.close()
-    print("Dask job is finished")
+    
+    if SLURM:
+        # remove scheduler file
+        os.remove("dask-scheduler-" + str(os.getenv("SLURM_JOB_ID")) + ".json")
+        # remove garbages
+        subprocess.call("rm -rf cudf_cufile_config.* ", shell=True)
+    print("<< Dask job successfully is finished. >>")
+    print("- Shutting down client ...")
+    time.sleep(5)
+    client.shutdown()
+    print("- Dask client is closed.\n")
     sys.exit(0)
 
 
