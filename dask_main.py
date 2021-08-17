@@ -135,7 +135,7 @@ def convert_from_csv_to_parquet(client, part_mem_frac, meta):
     '''
     Convert criteo dataset into parquet format with some preprocessing included.
     '''
-    file_list = []
+    
     list_number_days = []
     parquet_list = glob.glob(os.path.join(PARQUET_DATA_PATH, "day_*.parquet"))
     for i in range(0,NUMBER_DAYS):
