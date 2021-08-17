@@ -135,16 +135,27 @@ def convert_from_csv_to_parquet(client, part_mem_frac, meta):
     '''
     Convert criteo dataset into parquet format with some preprocessing included.
     '''
-    
+    file_list = []
+    list_number_days = []
     parquet_list = glob.glob(os.path.join(PARQUET_DATA_PATH, "day_*.parquet"))
-    if len(parquet_list) > 0:
+    for i in range(0,NUMBER_DAYS):
+        try:
+            parquet_list.index(os.path.join(PARQUET_DATA_PATH,"day_{}.parquet".format(i)))
+        except:
+            list_number_days.append(i)
+
+    if len(list_number_days) == 0:
         print("It seems your original dataset has been already converted")
         print("Parquet converting is passed")
     else:
         import nvtabular as nvt
         from nvtabular.ops import Normalize, FillMissing, Categorify, Clip, LogOp
 
-        file_list = glob.glob(os.path.join(ORG_DATA_PATH, "day_*"))
+        file_list = []
+        _file_list = glob.glob(os.path.join(ORG_DATA_PATH, "day_*"))
+        for idx in list_number_days:
+            file_list.append(_file_list[_file_list.index(os.path.join(ORG_DATA_PATH,"day_{}".format(idx)))])
+     
         print("files need to be converted:", file_list)
 
         # Specify column names    
